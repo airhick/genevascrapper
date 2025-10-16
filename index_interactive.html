@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geneva Hexagonal Grid - Interactive</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+        
+        #map {
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        .control-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            z-index: 1000;
+            min-width: 300px;
+        }
+        
+        .control-panel h3 {
+            margin: 0 0 15px 0;
+            font-size: 18px;
+            color: #2c3e50;
+            border-bottom: 3px solid #e74c3c;
+            padding-bottom: 8px;
+        }
+        
+        .slider-container {
+            margin: 20px 0;
+        }
+        
+        .slider-container label {
+            display: block;
+            font-size: 14px;
+            color: #34495e;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        
+        .slider-value {
+            display: inline-block;
+            background: #e74c3c;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 8px;
+            border-radius: 5px;
+            background: #ddd;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #e74c3c;
+            cursor: pointer;
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #e74c3c;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .button {
+            display: inline-block;
+            background: #3498db;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background 0.3s;
+            margin: 5px;
+        }
+        
+        .button:hover {
+            background: #2980b9;
+        }
+        
+        .button.success {
+            background: #27ae60;
+        }
+        
+        .button.success:hover {
+            background: #229954;
+        }
+        
+        .button.regenerate {
+            background: #e74c3c;
+        }
+        
+        .button.regenerate:hover {
+            background: #c0392b;
+        }
+        
+        .stats {
+            margin: 15px 0;
+            padding: 15px;
+            background: #ecf0f1;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        
+        .stats p {
+            margin: 5px 0;
+            color: #2c3e50;
+        }
+        
+        .stats .value {
+            font-weight: bold;
+            color: #e74c3c;
+        }
+        
+        .loading {
+            display: none;
+            color: #e74c3c;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .loading.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div class="control-panel">
+        <h3>🎛️ Interactive Grid Control</h3>
+        
+        <div class="slider-container">
+            <label>
+                Spacing between points:
+                <span class="slider-value" id="spacing-display">150 m</span>
+            </label>
+            <input type="range" id="spacing-slider" min="50" max="300" value="150" step="10">
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: #7f8c8d; margin-top: 5px;">
+                <span>50m</span>
+                <span>300m</span>
+            </div>
+        </div>
+        
+        <button class="button regenerate" id="regenerate-btn">🔄 Regenerate Grid</button>
+        
+        <div class="loading" id="loading">⏳ Generating grid...</div>
+        
+        <div class="stats">
+            <p>Total Points: <span class="value" id="point-count">166</span></p>
+            <p>Current Spacing: <span class="value" id="current-spacing">150 m</span></p>
+            <p>Coverage: <span class="value">Geneva City</span></p>
+        </div>
+        
+        <button class="button success" id="download-csv">📥 Download CSV</button>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        // Geneva city boundary polygon
+        const genevaBoundary = [
+            [46.1950, 6.1350], [46.1980, 6.1300], [46.2050, 6.1350],
+            [46.2100, 6.1400], [46.2150, 6.1450], [46.2150, 6.1550],
+            [46.2100, 6.1600], [46.2050, 6.1580], [46.2000, 6.1520],
+            [46.1950, 6.1480], [46.1950, 6.1400], [46.1950, 6.1350]
+        ];
+        
+        const GENEVA_BOUNDS = {
+            min_lat: 46.195,
+            max_lat: 46.215,
+            min_lon: 6.130,
+            max_lon: 6.160
+        };
+        
+        let currentPoints = [];
+        let currentMarkers = [];
+        let currentSpacing = 150;
+        
+        // Initialize the map
+        const map = L.map('map').setView([46.2044, 6.1432], 14);
+        
+        // Add OpenStreetMap tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 19
+        }).addTo(map);
+        
+        // Draw Geneva city boundary
+        const cityBoundary = L.polygon(genevaBoundary, {
+            color: '#3498db',
+            weight: 2,
+            opacity: 0.6,
+            fillColor: '#3498db',
+            fillOpacity: 0.05
+        }).addTo(map);
+        
+        // Utility functions
+        function metersToDegreesLat(meters) {
+            return meters / 111320.0;
+        }
+        
+        function metersToDegreesLon(meters, latitude) {
+            return meters / (111320.0 * Math.cos(latitude * Math.PI / 180));
+        }
+        
+        function pointInPolygon(lat, lon, polygon) {
+            let x = lon, y = lat;
+            let inside = false;
+            
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                let xi = polygon[i][1], yi = polygon[i][0];
+                let xj = polygon[j][1], yj = polygon[j][0];
+                
+                let intersect = ((yi > y) !== (yj > y))
+                    && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            
+            return inside;
+        }
+        
+        function generateHexagonalGrid(spacing) {
+            const points = [];
+            const center_lat = (GENEVA_BOUNDS.min_lat + GENEVA_BOUNDS.max_lat) / 2;
+            
+            const dy_hex = metersToDegreesLat(spacing * Math.sqrt(3) / 2);
+            const dx = metersToDegreesLon(spacing, center_lat);
+            
+            let row = 0;
+            let current_lat = GENEVA_BOUNDS.min_lat;
+            
+            while (current_lat <= GENEVA_BOUNDS.max_lat) {
+                const offset = (row % 2 === 1) ? (dx / 2) : 0;
+                let current_lon = GENEVA_BOUNDS.min_lon + offset;
+                
+                while (current_lon <= GENEVA_BOUNDS.max_lon) {
+                    if (pointInPolygon(current_lat, current_lon, genevaBoundary)) {
+                        points.push({
+                            lat: current_lat,
+                            lon: current_lon
+                        });
+                    }
+                    current_lon += dx;
+                }
+                
+                current_lat += dy_hex;
+                row++;
+            }
+            
+            return points;
+        }
+        
+        function clearMarkers() {
+            currentMarkers.forEach(marker => map.removeLayer(marker));
+            currentMarkers = [];
+        }
+        
+        function displayPoints(points) {
+            clearMarkers();
+            
+            points.forEach(point => {
+                const marker = L.circleMarker([point.lat, point.lon], {
+                    radius: 5,
+                    fillColor: '#e74c3c',
+                    color: '#ffffff',
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.9,
+                    interactive: false
+                });
+                marker.addTo(map);
+                currentMarkers.push(marker);
+            });
+            
+            document.getElementById('point-count').textContent = points.length;
+        }
+        
+        function downloadCSV() {
+            if (currentPoints.length === 0) return;
+            
+            // Create CSV content
+            let csv = 'Point_Number,Latitude,Longitude\n';
+            currentPoints.forEach((point, index) => {
+                csv += `${index + 1},${point.lat},${point.lon}\n`;
+            });
+            
+            // Create blob and download
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `geneva_hexgrid_${currentSpacing}m_${currentPoints.length}points.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+        
+        // Event listeners
+        document.getElementById('spacing-slider').addEventListener('input', function(e) {
+            const value = e.target.value;
+            document.getElementById('spacing-display').textContent = value + ' m';
+        });
+        
+        document.getElementById('regenerate-btn').addEventListener('click', function() {
+            const spacing = parseInt(document.getElementById('spacing-slider').value);
+            currentSpacing = spacing;
+            
+            document.getElementById('loading').classList.add('active');
+            
+            setTimeout(() => {
+                currentPoints = generateHexagonalGrid(spacing);
+                displayPoints(currentPoints);
+                document.getElementById('current-spacing').textContent = spacing + ' m';
+                document.getElementById('loading').classList.remove('active');
+            }, 100);
+        });
+        
+        document.getElementById('download-csv').addEventListener('click', downloadCSV);
+        
+        // Initial load
+        fetch('points.json?v=' + Date.now())
+            .then(response => response.json())
+            .then(points => {
+                currentPoints = points;
+                displayPoints(points);
+                map.fitBounds(cityBoundary.getBounds(), { padding: [50, 50] });
+            })
+            .catch(error => {
+                console.error('Error loading points:', error);
+                // Generate initial grid if file not found
+                currentPoints = generateHexagonalGrid(150);
+                displayPoints(currentPoints);
+            });
+    </script>
+</body>
+</html>
+

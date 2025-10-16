@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geneva Hexagonal Grid Mapping</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+        
+        #map {
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        .info-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+            min-width: 250px;
+        }
+        
+        .info-panel h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            color: #333;
+        }
+        
+        .info-panel p {
+            margin: 5px 0;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .info-panel .value {
+            font-weight: bold;
+            color: #d32f2f;
+        }
+        
+        .download-btn {
+            display: block;
+            width: 100%;
+            margin-top: 15px;
+            padding: 10px;
+            background: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+            text-align: center;
+            transition: background 0.3s;
+        }
+        
+        .download-btn:hover {
+            background: #229954;
+        }
+        
+        .interactive-link {
+            display: block;
+            margin-top: 10px;
+            padding: 10px;
+            background: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+            text-align: center;
+            font-size: 13px;
+            transition: background 0.3s;
+        }
+        
+        .interactive-link:hover {
+            background: #2980b9;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div class="info-panel">
+        <h3>Geneva Hexagonal Grid</h3>
+        <p>Coverage: <span class="value">City Shape</span></p>
+        <p>Spacing: <span class="value">150 meters</span></p>
+        <p>Total Points: <span class="value" id="point-count">Loading...</span></p>
+        <p>Pattern: <span class="value">Hexagonal</span></p>
+        
+        <button class="download-btn" id="download-csv">📥 Download CSV</button>
+        <a href="index_interactive.html" class="interactive-link">🎛️ Interactive Version (Adjust Spacing)</a>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        // Geneva city boundary polygon
+        const genevaBoundary = [
+            [46.1950, 6.1350], [46.1980, 6.1300], [46.2050, 6.1350],
+            [46.2100, 6.1400], [46.2150, 6.1450], [46.2150, 6.1550],
+            [46.2100, 6.1600], [46.2050, 6.1580], [46.2000, 6.1520],
+            [46.1950, 6.1480], [46.1950, 6.1400], [46.1950, 6.1350]
+        ];
+        
+        // Store points globally for CSV download
+        let currentPoints = [];
+        
+        // Initialize the map centered on Geneva
+        const map = L.map('map').setView([46.2044, 6.1432], 14);
+        
+        // Add OpenStreetMap tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 19
+        }).addTo(map);
+        
+        // Draw Geneva city boundary
+        L.polygon(genevaBoundary, {
+            color: '#3498db',
+            weight: 2,
+            opacity: 0.6,
+            fillColor: '#3498db',
+            fillOpacity: 0.05
+        }).addTo(map);
+        
+        // Load and display points
+        console.log('Fetching points.json...');
+        document.getElementById('point-count').textContent = 'Loading...';
+        
+        fetch('points.json?v=' + Date.now())
+            .then(response => {
+                console.log('Response received:', response.status);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(points => {
+                console.log(`Successfully loaded ${points.length} points`);
+                currentPoints = points; // Store for CSV download
+                document.getElementById('point-count').textContent = points.length;
+                
+                // Add each point to the map using CircleMarker (more visible and performant)
+                console.log('Adding points to map...');
+                let addedCount = 0;
+                
+                points.forEach(point => {
+                    L.circleMarker([point.lat, point.lon], {
+                        radius: 4,              // Size of the circle in pixels
+                        fillColor: '#ff0000',   // Bright red fill
+                        color: '#ffffff',       // White border
+                        weight: 1,              // Border width
+                        opacity: 1,             // Border opacity
+                        fillOpacity: 0.9,       // Fill opacity
+                        interactive: false      // Makes rendering faster
+                    }).addTo(map);
+                    addedCount++;
+                });
+                console.log(`Added ${addedCount} markers to map`);
+                
+                // Fit map to show all points
+                const bounds = L.latLngBounds(points.map(p => [p.lat, p.lon]));
+                map.fitBounds(bounds, { padding: [50, 50] });
+                console.log('Map bounds fitted');
+            })
+            .catch(error => {
+                console.error('Error loading points:', error);
+                document.getElementById('point-count').textContent = 'Error - Check Console';
+                alert('Failed to load points.json. Please open this page via http://localhost:8000/index.html\n\nError: ' + error.message);
+            });
+        
+        // CSV Download functionality
+        document.getElementById('download-csv').addEventListener('click', function() {
+            if (currentPoints.length === 0) {
+                alert('No points to download. Please wait for the grid to load.');
+                return;
+            }
+            
+            // Create CSV content
+            let csv = 'Point_Number,Latitude,Longitude\n';
+            currentPoints.forEach((point, index) => {
+                csv += `${index + 1},${point.lat},${point.lon}\n`;
+            });
+            
+            // Create blob and download
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `geneva_hexgrid_150m_${currentPoints.length}points.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+            
+            console.log(`Downloaded CSV with ${currentPoints.length} points`);
+        });
+    </script>
+</body>
+</html>
+

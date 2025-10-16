@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geneva Grid - With Business Data</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+        
+        #map {
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        .control-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.98);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            z-index: 1000;
+            max-width: 380px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        .control-panel h3 {
+            margin: 0 0 15px 0;
+            font-size: 18px;
+            color: #2c3e50;
+            border-bottom: 3px solid #e74c3c;
+            padding-bottom: 8px;
+        }
+        
+        .api-section {
+            margin: 15px 0;
+            padding: 15px;
+            background: #ecf0f1;
+            border-radius: 6px;
+        }
+        
+        .api-section label {
+            display: block;
+            font-size: 13px;
+            color: #2c3e50;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        
+        .api-section input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #bdc3c7;
+            border-radius: 4px;
+            font-size: 13px;
+            box-sizing: border-box;
+        }
+        
+        .api-section small {
+            display: block;
+            color: #7f8c8d;
+            margin-top: 5px;
+            font-size: 11px;
+        }
+        
+        .api-section a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        
+        .api-section a:hover {
+            text-decoration: underline;
+        }
+        
+        .button {
+            display: block;
+            width: 100%;
+            background: #3498db;
+            color: white;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 8px 0;
+            transition: background 0.3s;
+        }
+        
+        .button:hover {
+            background: #2980b9;
+        }
+        
+        .button.success {
+            background: #27ae60;
+        }
+        
+        .button.success:hover {
+            background: #229954;
+        }
+        
+        .button.danger {
+            background: #e74c3c;
+        }
+        
+        .button.danger:hover {
+            background: #c0392b;
+        }
+        
+        .button:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+        }
+        
+        .stats {
+            margin: 15px 0;
+            padding: 12px;
+            background: #ecf0f1;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        
+        .stats p {
+            margin: 5px 0;
+            color: #2c3e50;
+        }
+        
+        .stats .value {
+            font-weight: bold;
+            color: #e74c3c;
+        }
+        
+        .progress {
+            display: none;
+            margin: 15px 0;
+            padding: 15px;
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 6px;
+        }
+        
+        .progress.active {
+            display: block;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #ecf0f1;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: #3498db;
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        
+        .business-info {
+            margin: 15px 0;
+            padding: 12px;
+            background: #e8f5e9;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div class="control-panel">
+        <h3>🏢 Grid with Business Data</h3>
+        
+        <div class="api-section" style="background: #fff3cd; border: 1px solid #ffc107;">
+            <label>
+                Spacing between points:
+                <span class="slider-value" id="spacing-display" style="background: #e74c3c; color: white; padding: 4px 12px; border-radius: 4px; font-weight: bold; margin-left: 10px;">150 m</span>
+            </label>
+            <input type="range" id="spacing-slider" min="50" max="300" value="150" step="10" style="width: 100%; height: 8px; margin-top: 10px;">
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: #7f8c8d; margin-top: 5px;">
+                <span>50m</span>
+                <span>300m</span>
+            </div>
+        </div>
+        
+        <button class="button" id="regenerate-grid" style="background: #9b59b6;">🔄 Regenerate Grid</button>
+        
+        <div class="api-section">
+            <label>Google Places API Key (Optional):</label>
+            <input type="text" id="api-key" placeholder="Leave empty for OpenStreetMap (free)">
+            <small>
+                <strong>No key?</strong> Leave blank to use OpenStreetMap (free!)<br>
+                <strong>Want more data?</strong> Get Google key at 
+                <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Cloud Console</a>
+            </small>
+        </div>
+        
+        <div class="stats">
+            <p>Grid Points: <span class="value" id="point-count">166</span></p>
+            <p>Current Spacing: <span class="value" id="current-spacing">150 m</span></p>
+            <p>Businesses Found: <span class="value" id="business-count">0</span></p>
+            <p>Search Radius: <span class="value">75m per point</span></p>
+        </div>
+        
+        <button class="button danger" id="fetch-businesses">🔍 Fetch Business Data</button>
+        <button class="button success" id="download-csv" disabled>📥 Download CSV with Businesses</button>
+        
+        <div class="progress" id="progress">
+            <p id="progress-text">Fetching businesses...</p>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill" style="width: 0%">0%</div>
+            </div>
+            <small id="progress-detail">Processing point 0 of 0</small>
+        </div>
+        
+        <div class="business-info" id="business-info" style="display: none;">
+            <strong>📊 Business Data Ready!</strong>
+            <p style="margin: 5px 0;">Total businesses collected</p>
+            <p style="margin: 5px 0;">Click "Download CSV" to export</p>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        // Geneva city boundary
+        const genevaBoundary = [
+            [46.1950, 6.1350], [46.1980, 6.1300], [46.2050, 6.1350],
+            [46.2100, 6.1400], [46.2150, 6.1450], [46.2150, 6.1550],
+            [46.2100, 6.1600], [46.2050, 6.1580], [46.2000, 6.1520],
+            [46.1950, 6.1480], [46.1950, 6.1400], [46.1950, 6.1350]
+        ];
+        
+        let currentPoints = [];
+        let businessData = [];
+        let currentMarkers = [];
+        let currentSpacing = 150;
+        
+        // Initialize map
+        const map = L.map('map').setView([46.2044, 6.1432], 14);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 19
+        }).addTo(map);
+        
+        L.polygon(genevaBoundary, {
+            color: '#3498db',
+            weight: 2,
+            opacity: 0.6,
+            fillColor: '#3498db',
+            fillOpacity: 0.05
+        }).addTo(map);
+        
+        // Grid generation functions
+        const GENEVA_BOUNDS = {
+            min_lat: 46.195,
+            max_lat: 46.215,
+            min_lon: 6.130,
+            max_lon: 6.160
+        };
+        
+        function metersToDegreesLat(meters) {
+            return meters / 111320.0;
+        }
+        
+        function metersToDegreesLon(meters, latitude) {
+            return meters / (111320.0 * Math.cos(latitude * Math.PI / 180));
+        }
+        
+        function pointInPolygon(lat, lon, polygon) {
+            let x = lon, y = lat;
+            let inside = false;
+            
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                let xi = polygon[i][1], yi = polygon[i][0];
+                let xj = polygon[j][1], yj = polygon[j][0];
+                
+                let intersect = ((yi > y) !== (yj > y))
+                    && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            
+            return inside;
+        }
+        
+        function generateHexagonalGrid(spacing) {
+            const points = [];
+            const center_lat = (GENEVA_BOUNDS.min_lat + GENEVA_BOUNDS.max_lat) / 2;
+            
+            const dy_hex = metersToDegreesLat(spacing * Math.sqrt(3) / 2);
+            const dx = metersToDegreesLon(spacing, center_lat);
+            
+            let row = 0;
+            let current_lat = GENEVA_BOUNDS.min_lat;
+            
+            while (current_lat <= GENEVA_BOUNDS.max_lat) {
+                const offset = (row % 2 === 1) ? (dx / 2) : 0;
+                let current_lon = GENEVA_BOUNDS.min_lon + offset;
+                
+                while (current_lon <= GENEVA_BOUNDS.max_lon) {
+                    if (pointInPolygon(current_lat, current_lon, genevaBoundary)) {
+                        points.push({
+                            lat: current_lat,
+                            lon: current_lon
+                        });
+                    }
+                    current_lon += dx;
+                }
+                
+                current_lat += dy_hex;
+                row++;
+            }
+            
+            return points;
+        }
+        
+        function clearMarkers() {
+            currentMarkers.forEach(marker => map.removeLayer(marker));
+            currentMarkers = [];
+        }
+        
+        function displayPoints(points) {
+            clearMarkers();
+            
+            points.forEach(point => {
+                const marker = L.circleMarker([point.lat, point.lon], {
+                    radius: 4,
+                    fillColor: '#ff0000',
+                    color: '#ffffff',
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: 0.9,
+                    interactive: false
+                });
+                marker.addTo(map);
+                currentMarkers.push(marker);
+            });
+            
+            document.getElementById('point-count').textContent = points.length;
+        }
+        
+        // Load initial grid points
+        fetch('points.json?v=' + Date.now())
+            .then(response => response.json())
+            .then(points => {
+                currentPoints = points;
+                displayPoints(points);
+                map.fitBounds(L.latLngBounds(points.map(p => [p.lat, p.lon])), { padding: [50, 50] });
+            })
+            .catch(() => {
+                // If file not found, generate initial grid
+                currentPoints = generateHexagonalGrid(150);
+                displayPoints(currentPoints);
+            });
+        
+        // Fetch businesses using Google Places API
+        async function fetchBusinessesForPoint(lat, lon, apiKey) {
+            const radius = 75; // meters
+            const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lon}&radius=${radius}&key=${apiKey}`;
+            
+            // Note: Direct API calls from browser are blocked by CORS
+            // Using a proxy or backend is recommended for production
+            // For demonstration, we'll use a CORS proxy
+            const proxyUrl = 'https://api.allorigins.win/raw?url=';
+            
+            try {
+                const response = await fetch(proxyUrl + encodeURIComponent(url));
+                const data = await response.json();
+                
+                if (data.results) {
+                    return data.results.map(place => ({
+                        name: place.name,
+                        address: place.vicinity || '',
+                        phone: place.formatted_phone_number || 'N/A',
+                        website: place.website || 'N/A',
+                        types: place.types ? place.types.join(', ') : '',
+                        rating: place.rating || 'N/A',
+                        lat: place.geometry.location.lat,
+                        lon: place.geometry.location.lng
+                    }));
+                }
+                return [];
+            } catch (error) {
+                console.error('Error fetching businesses:', error);
+                return [];
+            }
+        }
+        
+        // Alternative: Fetch using Overpass API (OpenStreetMap data - no API key needed!)
+        async function fetchBusinessesOSM(lat, lon) {
+            const radius = 75; // meters
+            const query = `
+                [out:json];
+                (
+                  node["shop"](around:${radius},${lat},${lon});
+                  node["amenity"](around:${radius},${lat},${lon});
+                  node["office"](around:${radius},${lat},${lon});
+                  way["shop"](around:${radius},${lat},${lon});
+                  way["amenity"](around:${radius},${lat},${lon});
+                  way["office"](around:${radius},${lat},${lon});
+                );
+                out center;
+            `;
+            
+            const url = 'https://overpass-api.de/api/interpreter';
+            
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    body: query
+                });
+                const data = await response.json();
+                
+                if (data.elements) {
+                    return data.elements.map(place => ({
+                        name: place.tags?.name || 'Unnamed',
+                        type: place.tags?.shop || place.tags?.amenity || place.tags?.office || 'Unknown',
+                        address: [
+                            place.tags?.['addr:street'],
+                            place.tags?.['addr:housenumber']
+                        ].filter(Boolean).join(' ') || 'N/A',
+                        phone: place.tags?.phone || place.tags?.['contact:phone'] || 'N/A',
+                        website: place.tags?.website || place.tags?.['contact:website'] || 'N/A',
+                        lat: place.lat || place.center?.lat || lat,
+                        lon: place.lon || place.center?.lon || lon
+                    }));
+                }
+                return [];
+            } catch (error) {
+                console.error('Error fetching OSM data:', error);
+                return [];
+            }
+        }
+        
+        // Fetch all businesses
+        document.getElementById('fetch-businesses').addEventListener('click', async function() {
+            const apiKey = document.getElementById('api-key').value.trim();
+            
+            // Use OSM data (no API key needed) or Google Places (requires key)
+            const useOSM = !apiKey || apiKey === '';
+            
+            if (!useOSM && apiKey.length < 30) {
+                alert('Please enter a valid Google Places API key, or leave blank to use OpenStreetMap data (free, no key needed)');
+                return;
+            }
+            
+            businessData = [];
+            document.getElementById('progress').classList.add('active');
+            document.getElementById('fetch-businesses').disabled = true;
+            
+            const totalPoints = currentPoints.length;
+            
+            for (let i = 0; i < totalPoints; i++) {
+                const point = currentPoints[i];
+                const progress = Math.round(((i + 1) / totalPoints) * 100);
+                
+                document.getElementById('progress-fill').style.width = progress + '%';
+                document.getElementById('progress-fill').textContent = progress + '%';
+                document.getElementById('progress-detail').textContent = 
+                    `Processing point ${i + 1} of ${totalPoints}`;
+                
+                let businesses;
+                if (useOSM) {
+                    businesses = await fetchBusinessesOSM(point.lat, point.lon);
+                } else {
+                    businesses = await fetchBusinessesForPoint(point.lat, point.lon, apiKey);
+                }
+                
+                businesses.forEach(business => {
+                    businessData.push({
+                        gridPoint: i + 1,
+                        gridLat: point.lat,
+                        gridLon: point.lon,
+                        ...business
+                    });
+                });
+                
+                // Rate limiting delay
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            document.getElementById('progress').classList.remove('active');
+            document.getElementById('fetch-businesses').disabled = false;
+            document.getElementById('download-csv').disabled = false;
+            document.getElementById('business-count').textContent = businessData.length;
+            document.getElementById('business-info').style.display = 'block';
+            
+            console.log(`Fetched ${businessData.length} businesses`);
+        });
+        
+        // Download CSV with business data
+        document.getElementById('download-csv').addEventListener('click', function() {
+            if (businessData.length === 0) {
+                alert('No business data available. Please fetch businesses first.');
+                return;
+            }
+            
+            // Create CSV with business data
+            let csv = 'Grid_Point,Grid_Latitude,Grid_Longitude,Business_Name,Business_Type,Address,Phone,Website,Business_Lat,Business_Lon\n';
+            
+            businessData.forEach(item => {
+                csv += `${item.gridPoint},${item.gridLat},${item.gridLon},"${item.name}","${item.type || ''}","${item.address}","${item.phone}","${item.website}",${item.lat},${item.lon}\n`;
+            });
+            
+            // Download
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `geneva_grid_${currentSpacing}m_with_businesses_${businessData.length}entries.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+            
+            console.log(`Downloaded CSV with ${businessData.length} business entries`);
+        });
+        
+        // Spacing slider event listener
+        document.getElementById('spacing-slider').addEventListener('input', function(e) {
+            const value = e.target.value;
+            document.getElementById('spacing-display').textContent = value + ' m';
+        });
+        
+        // Regenerate grid button event listener
+        document.getElementById('regenerate-grid').addEventListener('click', function() {
+            const spacing = parseInt(document.getElementById('spacing-slider').value);
+            currentSpacing = spacing;
+            
+            // Clear business data when regenerating grid
+            businessData = [];
+            document.getElementById('business-count').textContent = '0';
+            document.getElementById('download-csv').disabled = true;
+            document.getElementById('business-info').style.display = 'none';
+            
+            // Generate new grid
+            currentPoints = generateHexagonalGrid(spacing);
+            displayPoints(currentPoints);
+            
+            // Update UI
+            document.getElementById('current-spacing').textContent = spacing + ' m';
+            
+            console.log(`Regenerated grid with ${currentPoints.length} points at ${spacing}m spacing`);
+        });
+    </script>
+</body>
+</html>
+

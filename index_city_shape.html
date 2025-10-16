@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geneva City - Hexagonal Grid (150m)</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+        
+        #map {
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        .info-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            z-index: 1000;
+            min-width: 280px;
+        }
+        
+        .info-panel h3 {
+            margin: 0 0 15px 0;
+            font-size: 18px;
+            color: #2c3e50;
+            border-bottom: 3px solid #e74c3c;
+            padding-bottom: 8px;
+        }
+        
+        .info-panel p {
+            margin: 10px 0;
+            font-size: 14px;
+            color: #34495e;
+        }
+        
+        .info-panel .value {
+            font-weight: bold;
+            color: #e74c3c;
+            font-size: 16px;
+        }
+        
+        .legend {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #ddd;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            font-size: 13px;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 10px;
+            border: 2px solid white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+        
+        .legend-line {
+            width: 30px;
+            height: 3px;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div class="info-panel">
+        <h3>🗺️ Geneva City Grid</h3>
+        <p>Coverage: <span class="value">City Shape</span></p>
+        <p>Spacing: <span class="value">150 meters</span></p>
+        <p>Total Points: <span class="value" id="point-count">Loading...</span></p>
+        <p>Pattern: <span class="value">Hexagonal</span></p>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background: #e74c3c;"></div>
+                <span>Grid Points</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-line" style="background: #3498db;"></div>
+                <span>City Boundary</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        // Geneva city boundary polygon (matches the Python script)
+        const genevaBoundary = [
+            [46.1950, 6.1350],  // Northwest
+            [46.1980, 6.1300],  // North
+            [46.2050, 6.1350],  // Northeast  
+            [46.2100, 6.1400],  // North-central
+            [46.2150, 6.1450],  // Northeast lake
+            [46.2150, 6.1550],  // East along lake
+            [46.2100, 6.1600],  // Southeast
+            [46.2050, 6.1580],  // South
+            [46.2000, 6.1520],  // Southwest
+            [46.1950, 6.1480],  // West-central
+            [46.1950, 6.1400],  // West
+            [46.1950, 6.1350],  // Close polygon
+        ];
+        
+        // Initialize the map centered on Geneva
+        const map = L.map('map').setView([46.2044, 6.1432], 14);
+        
+        // Add OpenStreetMap tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 19
+        }).addTo(map);
+        
+        // Draw Geneva city boundary
+        L.polygon(genevaBoundary, {
+            color: '#3498db',
+            weight: 3,
+            opacity: 0.8,
+            fillColor: '#3498db',
+            fillOpacity: 0.1
+        }).addTo(map);
+        
+        // Load and display points
+        console.log('Fetching points.json...');
+        document.getElementById('point-count').textContent = 'Loading...';
+        
+        fetch('points.json?v=' + Date.now())
+            .then(response => {
+                console.log('Response received:', response.status);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(points => {
+                console.log(`Successfully loaded ${points.length} points`);
+                document.getElementById('point-count').textContent = points.length;
+                
+                // Add each point to the map
+                console.log('Adding points to map...');
+                let addedCount = 0;
+                
+                points.forEach(point => {
+                    L.circleMarker([point.lat, point.lon], {
+                        radius: 5,              // Medium size
+                        fillColor: '#e74c3c',   // Red fill
+                        color: '#ffffff',       // White border
+                        weight: 2,              // Border width
+                        opacity: 1,             // Border opacity
+                        fillOpacity: 0.9,       // Fill opacity
+                        interactive: false      // Makes rendering faster
+                    }).addTo(map);
+                    addedCount++;
+                });
+                console.log(`Added ${addedCount} markers following Geneva city shape`);
+                
+                // Fit map to show city boundary
+                const bounds = L.latLngBounds(genevaBoundary);
+                map.fitBounds(bounds, { padding: [50, 50] });
+                console.log('Map fitted to Geneva city boundaries');
+            })
+            .catch(error => {
+                console.error('Error loading points:', error);
+                document.getElementById('point-count').textContent = 'Error';
+                alert('Failed to load points.json\n\nError: ' + error.message);
+            });
+    </script>
+</body>
+</html>
+

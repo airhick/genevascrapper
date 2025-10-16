@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geneva Grid - 150m SPACING - DEBUG</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+        
+        #map {
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        .info-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            z-index: 1000;
+            min-width: 300px;
+            font-size: 14px;
+        }
+        
+        .info-panel h3 {
+            margin: 0 0 15px 0;
+            font-size: 18px;
+            color: #ff0000;
+            border-bottom: 2px solid #ff0000;
+            padding-bottom: 5px;
+        }
+        
+        .info-panel p {
+            margin: 8px 0;
+            font-size: 14px;
+        }
+        
+        .info-panel .value {
+            font-weight: bold;
+            color: #00ff00;
+            font-size: 16px;
+        }
+        
+        .info-panel .status {
+            color: #ffff00;
+            font-weight: bold;
+        }
+        
+        #debug-log {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #444;
+            font-size: 12px;
+            font-family: 'Courier New', monospace;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .alert-box {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #ff0000;
+            color: white;
+            padding: 20px 40px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 18px;
+            z-index: 1001;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div class="info-panel">
+        <h3>🔴 DEBUG MODE - 150m Grid</h3>
+        <p>Spacing: <span class="value" id="spacing">150 meters</span></p>
+        <p>Total Points: <span class="value" id="point-count">Loading...</span></p>
+        <p>Status: <span class="status" id="status">Initializing...</span></p>
+        <p>Dots Added: <span class="value" id="dots-added">0</span></p>
+        <p>File Size: <span class="value" id="file-size">-</span></p>
+        <div id="debug-log"></div>
+    </div>
+    
+    <div class="alert-box" id="alert">
+        🔴 LOADING 150-METER GRID...
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        const debugLog = document.getElementById('debug-log');
+        
+        function log(message) {
+            console.log(message);
+            debugLog.innerHTML += `<div>${new Date().toLocaleTimeString()}: ${message}</div>`;
+            debugLog.scrollTop = debugLog.scrollHeight;
+        }
+        
+        // Initialize the map centered on Geneva
+        log('Initializing map...');
+        const map = L.map('map').setView([46.2044, 6.1432], 13);
+        
+        // Add OpenStreetMap tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 19
+        }).addTo(map);
+        log('Map tiles loaded');
+        
+        // Load and display points
+        document.getElementById('status').textContent = 'Fetching points...';
+        log('Fetching points.json with cache-busting...');
+        
+        const fetchUrl = 'points.json?v=' + Date.now();
+        log('Fetch URL: ' + fetchUrl);
+        
+        fetch(fetchUrl)
+            .then(response => {
+                log(`Response received: ${response.status}`);
+                
+                // Get file size from headers if available
+                const contentLength = response.headers.get('content-length');
+                if (contentLength) {
+                    const sizeKB = (parseInt(contentLength) / 1024).toFixed(1);
+                    document.getElementById('file-size').textContent = sizeKB + ' KB';
+                    log(`File size: ${sizeKB} KB`);
+                }
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(points => {
+                log(`✅ Loaded ${points.length} points`);
+                document.getElementById('point-count').textContent = points.length;
+                document.getElementById('status').textContent = 'Adding dots to map...';
+                
+                // Verify spacing by checking first two points
+                if (points.length >= 2) {
+                    const R = 6371000; // Earth radius in meters
+                    const lat1 = points[0].lat * Math.PI / 180;
+                    const lat2 = points[1].lat * Math.PI / 180;
+                    const dLat = (points[1].lat - points[0].lat) * Math.PI / 180;
+                    const dLon = (points[1].lon - points[0].lon) * Math.PI / 180;
+                    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                            Math.cos(lat1) * Math.cos(lat2) *
+                            Math.sin(dLon/2) * Math.sin(dLon/2);
+                    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                    const distance = R * c;
+                    log(`First point spacing: ${distance.toFixed(2)} meters`);
+                    document.getElementById('spacing').textContent = `${distance.toFixed(0)} meters`;
+                }
+                
+                // Add each point to the map - EXTRA LARGE dots
+                log('Adding EXTRA LARGE dots...');
+                let addedCount = 0;
+                
+                points.forEach((point, index) => {
+                    L.circleMarker([point.lat, point.lon], {
+                        radius: 8,              // EXTRA LARGE - 8px radius!
+                        fillColor: '#ff0000',   // Bright red
+                        color: '#ffff00',       // YELLOW border for max visibility!
+                        weight: 2,              // Thick border
+                        opacity: 1,             // Full opacity
+                        fillOpacity: 1,         // Full fill opacity
+                        interactive: false
+                    }).addTo(map);
+                    addedCount++;
+                    
+                    // Update counter every 500 dots
+                    if (addedCount % 500 === 0) {
+                        document.getElementById('dots-added').textContent = addedCount;
+                    }
+                });
+                
+                document.getElementById('dots-added').textContent = addedCount;
+                log(`✅ Added ${addedCount} EXTRA LARGE red dots with yellow borders!`);
+                
+                // Fit map to show all points
+                const bounds = L.latLngBounds(points.map(p => [p.lat, p.lon]));
+                map.fitBounds(bounds, { padding: [50, 50] });
+                log('Map bounds fitted to show all points');
+                
+                document.getElementById('status').textContent = '✅ COMPLETE!';
+                document.getElementById('alert').innerHTML = `🔴 ${addedCount} RED DOTS VISIBLE! 🔴<br><small>150-meter spacing</small>`;
+                
+                // Change alert color to green after 2 seconds
+                setTimeout(() => {
+                    document.getElementById('alert').style.background = '#00ff00';
+                    document.getElementById('alert').style.color = '#000';
+                }, 2000);
+                
+                // Hide alert after 5 seconds
+                setTimeout(() => {
+                    document.getElementById('alert').style.display = 'none';
+                }, 5000);
+            })
+            .catch(error => {
+                log(`❌ ERROR: ${error.message}`);
+                document.getElementById('status').textContent = '❌ ERROR';
+                document.getElementById('point-count').textContent = 'Failed';
+                document.getElementById('alert').innerHTML = `❌ ERROR: ${error.message}`;
+            });
+    </script>
+</body>
+</html>
+
